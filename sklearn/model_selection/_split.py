@@ -963,10 +963,13 @@ class TimeSeriesSplit(_BaseKFold):
     Parameters
     ----------
     n_splits : int, default=5
-        Number of splits. Must be at least 2.
+        Number of splits. Must be at least 3.
 
         .. versionchanged:: 0.22
             ``n_splits`` default value changed from 3 to 5.
+    
+    min_train_size : iny, default=None
+        Minimum size for a single training set
 
     max_train_size : int, default=None
         Maximum size for a single training set.
@@ -1031,8 +1034,9 @@ class TimeSeriesSplit(_BaseKFold):
     where ``n_samples`` is the number of samples.
     """
 
-    def __init__(self, n_splits=5, *, max_train_size=None, test_size=None, gap=0):
+    def __init__(self, n_splits=5, *,min_train_size=None, max_train_size=None, test_size=None, gap=0):
         super().__init__(n_splits, shuffle=False, random_state=None)
+        self.min_train_size = min_train_size
         self.max_train_size = max_train_size
         self.test_size = test_size
         self.gap = gap
@@ -1068,6 +1072,9 @@ class TimeSeriesSplit(_BaseKFold):
         test_size = (
             self.test_size if self.test_size is not None else n_samples // n_folds
         )
+        min_train_size = (
+            self.min_train_size if self.min_train_size is not None else (n_samples - (n_splits-2)*test_size)
+        )
 
         # Make sure we have enough samples for the given split parameters
         if n_folds > n_samples:
@@ -1080,9 +1087,19 @@ class TimeSeriesSplit(_BaseKFold):
                 f"Too many splits={n_splits} for number of samples"
                 f"={n_samples} with test_size={test_size} and gap={gap}."
             )
+        if n_splits <= 2:
+            raise ValueError(
+                f"Too few splits={n_splits} for minimum training size"
+                f"{min_train_size} is not less that number of samples {n_samples}."
+            )
+        if min_train_size-gap-self.max_train_size < 0:
+            raise ValueError(
+                f"Too small minimum trainig size {min_train_size} with maximum training size"
+                f"{self.max_train_size}, number of splits {n_splits} and gap {gap}."
+            )
 
         indices = np.arange(n_samples)
-        test_starts = range(n_samples - n_splits * test_size, n_samples, test_size)
+        test_starts = range(min_train_size, n_samples, test_size)
 
         for test_start in test_starts:
             train_end = test_start - gap
